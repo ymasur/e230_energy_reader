@@ -5,6 +5,8 @@
 .vscode/launch.json
 .vscode/ipch
 # YM 1.1.2021
-*.zip
+*.zip	# no zip
+*.lnk	# no Wndows link
+# no EXE test files
 test/test_e230/Debug
 test/test_e230/x64
