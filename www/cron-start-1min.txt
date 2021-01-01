@@ -1,0 +1,3 @@
+# launch start each 1 minutes
+*/1	*	*	*	*	/www/sd/e230_query.py
+
