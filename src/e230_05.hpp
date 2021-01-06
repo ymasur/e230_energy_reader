@@ -375,6 +375,8 @@ DEBUG_LINE_PRINTF("<stop>");
 		return _errored;
 	}
 
+	int e_state()  {return _state; }
+
 	void cycle()
 	{
 		if (_begun == false) return;
@@ -1000,7 +1002,7 @@ DEBUG_LINE_PRINTF("%c %02X (%u)", (c<'!'||c>'~'?' ':c), int(c), (ms() - _state_m
 
 };
 
-//CLASS E230_S * p_e230;
+CLASS E230_S * p_e230;
 
 // -----------------------------------------------------------------------------
 #endif // E230_HPP

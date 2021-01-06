@@ -15,7 +15,7 @@
 #define B_MINUS 1
 #define B_NUMBER 2  // we have only 2 buttons
 
-#define NB_MENUS 5  // Menus are defined as:
+#define NB_MENUS 4  // Menus are defined as:
 // 0) normal
 // 1) energy in and out
 // 2) short energy, U, I

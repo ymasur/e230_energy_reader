@@ -1,6 +1,7 @@
 /* 	e_main.cpp
 	----------
 	YM: 31.12.2020
+  01.01.2021: add min stack
 */
 #ifndef MAIN
 #define MAIN
@@ -14,11 +15,11 @@
 #include "e_menu.h"
 
 
-enum proc { wait, ask, rec, calc };
+enum proc { wait, ask, rec, getv, calc };
 u8 pstate;  // aqu process states
 bool time_to_store, store_done; // storage process control
 bool print_val; // cmd 'p' active print command
-E230_S * p_e230;  // pointer for instance of E230_S object
+//E230_S * p_e230;  // pointer for instance of E230_S object
 
 // -----------------------------------------------------------------------------
 
@@ -54,8 +55,10 @@ void blink(short n=1, short t=1)
 void log_err(const char * msg)
 {
   err_act = true; // make the error flag active (removed by menu)
-  //strncpy(err_msg, msg, sizeof(err_msg) );
-  log_msg(msg);
+  //strncpy(last_log, msg, sizeof(last_log) );
+  // log_info(msg);
+  // display_at_ln(msg);
+  //log_msg_SD(msg);
 }
 
 // log the message and take the last one for reference
@@ -70,25 +73,17 @@ void log_msg(const char * msg)
 }
 #endif
 
-// spare memory: log_msg -> log_info
-#define log_msg(MSG) log_info(MSG)
-
 // display an info for a short time, and not memorized
 void log_info(const char * msg)
 {
   Serial.print(F("##info:")); Serial.println(msg);
   tempo_msg = 10;
   display_at_ln(msg);
-  //log_msg_SD(msg);
 }
 
-void set_actual_time()
-{
-  myTime = rtc.now(); // get the RTC time
-  tm_to_ascii(&myTime, dateTimeStr);
-}
 
 /* ----------------------------------------------------- */
+
 void setup()
 {
   pinMode(SW1, INPUT);
@@ -98,50 +93,35 @@ void setup()
 
   LED_ON(LED_R);
 
-	menu = 0; // clear menu setting
-  ser_copy = 0;
-
 	// init an array of button control
 	sw[0] = new Sw(SW1);
 	sw[1] = new Sw(SW2);
 
+  min_stack = 9999;
+	menu = 0; // clear menu setting
+  ser_copy = 0;
+
   // I2C
   Wire.begin();
-
 
 	// LCD
 	lcd = new jm_LCM2004A_I2C();  // Add. 0X27 standard
 	lcd->begin();  lcd->clear_display();
-	lcd->print(F(__PROG__ " " VERSION));  // on line 0
-  lcd->print(F("LCD init done..."));     delay(2000);
+	lcd->print(F(__PROG__ "  " VERSION));  // on line 0
+  display_full_ln("LCD init done", 1);     
 
 	// we use serial for log messages
-	Serial.begin(9600); delay(3000);
-	Serial.println(F("Serial started..."));	
-  
+	Serial.begin(9600); 
+	display_full_ln("Serial started", 2);
 
-	// RTC, start
-	display_at_ln("Start RTC, read.... ",2); //delay(2000);
-
-	if (! rtc.begin()) 
-	{
-		display_full_ln("Couldn't find RTC",2); delay(3000);
-	}
-
-	// timing vars initialized
-	set_actual_time();
-	timeSyncInit();
-	timeSyncStart();
-
-  menu = 0; // clear menu setting
+  delay(3000);
 
   // Bridge startup
   Bridge.begin();
 
-  // Listen for incoming connection only from localhost
-  // (no one from the external network could connect)
-  //server.listenOnLocalhost();
-  //server.begin();
+  display_full_ln("Read time...", 3);
+  strcpy(dateTimeStr, ("2021")); // assure century
+  getTimeStamp(dateTimeStr+2, sizeof(dateTimeStr)-3);
 
   FileSystem.begin();
 
@@ -151,10 +131,14 @@ void setup()
 #else
 	STREAM_IN.begin(300, SERIAL_7E1);
 #endif
-  display_full_ln("Serial e230 started",3); 
+  display_full_ln("Serial e230 started", 1); 
+
+  p_e230 = new(E230_S);
+  if (p_e230 != NULL)
+    display_full_ln("e230 instancied", 2);
 
 	// stabilize STREAM_IN and STREAM_OUT RX/TX lines after reset/power up...
-	delay(1000);
+	delay(3000);
 
 	err_act = false;  // no error
 
@@ -165,12 +149,11 @@ void setup()
 	server.begin();
 #endif
 
-	//e230.begin();	
-  //display_full_ln("e230 begin",1); //delay(1000);
-
-  log_msg_SD(__PROG__ " " VERSION );
+  log_msg_SD( __PROG__ " " VERSION );
 
   time_to_store = false;
+
+  menu = 0; // clear menu setting
 
   LED_OFF(LED_R);
 
@@ -258,8 +241,16 @@ void serial_cmd()
       //data.print();
     break;
 
+    case 's':
+    Serial.print(F("\nStack min:")); Serial.println(min_stack);
+    break;
+
     case 't':
     Serial.println(dateTimeStr);
+    break;
+
+    case 'x': // force termination
+      pstate = getv;
     break;
 
     case '?':
@@ -271,112 +262,7 @@ void serial_cmd()
   }
 } // serial_cmd()
 
-
 /* ------------------------------------------*/
-
-void poll_loop_1_s()
-{
-  set_actual_time(); // take the actual time
-
-  //Serial.println(dateTimeStr);
-/*
-  if (IsSyncTime_03h00())
-    timeSyncStart();
-
-  timeSync();
-*/
-  
-  Serial.println();
-  Serial.print(freeMemory());Serial.print(F(":state:")); Serial.println(pstate);
-
-  if (IsSyncTime_10_seconds() && pstate == wait)
-  {
-    if (p_e230 == NULL)
-    p_e230 = new(E230_S);
-    Serial.println(freeMemory());
-
-    if (p_e230)
-    {
-      p_e230->begin();
-      p_e230->start();
-      pstate = ask;
-      Serial.println(F(" ***Start*** "));
-    }
-
-  }
-  else if(!p_e230->ready() && pstate == ask)
-  {
-    pstate = rec;
-    Serial.println(F(" get values"));
-  }
-  else if(p_e230->ready() == true && p_e230->errored() == false && pstate == rec)
-  {
-    Serial.println(F(" calc values"));
-    get_all_values(p_e230->_buf);
-    pstate = calc;
-  }
-  else if(pstate == calc)
-  {
-    delete(p_e230); p_e230 = NULL;
-    Serial.println(F(" ***Wait"));
-
-    pstate = wait;
-  }
-  else if(pstate == wait)
-  {
-    if (IsSyncTime_15_minutes())  // Q: time window to store data?
-    {                             // A: Yes, set the marker
-      if (!time_to_store)
-      {
-        Serial.println(F(" ***Store"));
-        time_to_store = true;         
-      }
-      LED_ON(LED_R); 
-    }
-    else                  // A: no, reset marker
-    {
-      if (time_to_store)  // Q: flag active?
-      {
-        time_to_store = false; // A: yes, clear flag
-        LED_OFF(LED_R);        
-      }
-    }
-
-    if (print_val == true)
-    {
-      data.print();
-      print_val = false;
-    }
-  }// psate == wait
-
-  if (pstate)
-    LED_ON(LED_J);
-  else
-    LED_OFF(LED_J);
-
-/* ----------------------------------------------------- */
-  if (time_to_store) // Q: is time to store datas?
-  {
-    if (!store_done)  // Q: already done?
-    {                 // A: no, store datas
-      data_time = myTime; // copy of the time
-      store_datas(fname, data_time); 
-      data.energy_diff();    // compute the delta energy
-      store_done = true;
-    }
-  }
-  else
-  { // out of window time for storage
-    store_done = false;
-  }
-
-/* ----------------------------------------------------- */
-
-  display_menu(); // rest of display depends of the menu choice
-
-  //digitalWrite(LED13, !digitalRead(LED13)); // life monitoring - blink LED13
-}
-
 
 /*  poll_loop_X_ms()
     ----------------
@@ -395,12 +281,139 @@ void poll_loop_X_ms()
     
   menu_select(); // follow user choice
   serial_cmd();
+
+
+  // get the minimum aivable Ram space
+  if (min_stack > freeMemory())
+      min_stack = freeMemory();
+
+}
+
+
+static unsigned char rec_count;
+
+void poll_loop_1_s()
+{
+  getTimeStamp(dateTimeStr+2, sizeof(dateTimeStr)-3);
+
+  Serial.print(dateTimeStr);
+  Serial.print(F(" pstate:")); Serial.println(pstate);
+
+  if (IsSyncTime_x_seconds(15) && pstate == wait)
+  {
+    p_e230->begin();
+    p_e230->start();
+    rec_count = 0;
+    Serial.println(F(" ***Start "));
+    LED_OFF(LED_R);
+    pstate = ask;
+  }
+
+  else if(!p_e230->ready() && pstate == ask)
+  {
+    Serial.println(F(" get values"));
+    pstate = rec;    
+  }
+    
+  else if (pstate == rec )
+  {
+    if (rec_count++ > 6)
+    {
+      log_info("Read timeout!");
+      rec_count = 0;
+      pstate = getv;
+      Serial.println("*E*");
+    }
+    
+    Serial.print(p_e230->e_state()); Serial.print(" ! "); 
+    Serial.print(p_e230->started()); Serial.print(" ! ");
+    if (p_e230->errored())
+      { 
+        log_info("Read error!");
+        err_act = true; 
+        pstate = wait;
+      }
+
+      if (p_e230->ready())
+        pstate = getv;
+  }
+
+  else if (p_e230->started() == false && pstate == getv)
+  {
+    Serial.println(F(" get values"));
+    get_all_values(p_e230->_buf);
+    err_act = false;
+    pstate = calc;
+  }
+  
+  else if(pstate == calc)
+  {
+    Serial.println(F(" ***Wait"));
+    pstate = wait;
+  }
+  else if(pstate == wait)
+  {
+    if (IsSyncTime_15_minutes())  // Q: time window to store data?
+    {                             // A: Yes, set the marker
+      if (!time_to_store)
+      {
+        Serial.println(F(" ***Store"));
+        time_to_store = true;         
+      }
+    }
+    else                  // A: no, reset marker
+    {
+      if (time_to_store)  // Q: flag active?
+      {
+        time_to_store = false; // A: yes, clear flag   
+      }
+    }
+
+    if (print_val == true)
+    {
+      data.print();
+      print_val = false;
+    }
+  }// psate == wait
+
+  if (pstate)
+    LED_ON(LED_J);
+  else
+    LED_OFF(LED_J);
+
+
+  if (err_act)
+    LED_ON(LED_R);
+  else
+    LED_OFF(LED_R);
+  
+/* ----------------------------------------------------- */
+
+  if (time_to_store) // Q: is time to store datas?
+  {
+    if (!store_done)  // Q: already done?
+    {                 // A: no, store datas
+      store_datas(fname); 
+      data.energy_diff();    // compute the delta energy
+      store_done = true;
+    }
+  }
+  else
+  { // out of window time for storage
+    store_done = false;
+  }
+
+/* ----------------------------------------------------- */
+
+  display_menu(); // rest of display depends of the menu choice
+
 }
 
 /* main loop of Arduino
 */
 #define SHORT_CYCLE 20  // 20 ms
-#define MAIN_CYCLE 1000  // 1 sec.
+//#define MAIN_CYCLE 1000  // 1 sec.
+#define MAIN_CYCLE 1000
 
 void loop()
 {

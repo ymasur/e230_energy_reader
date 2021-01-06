@@ -2,6 +2,7 @@
  e_store.cpp
  -----------
  20.12.2020 - ymasur@microclub.ch
+ 01.01.2021 - YM: sup. RTC (NTP only)
 
  Module store can write datas onto SD/USB storage file
 */
@@ -14,21 +15,10 @@
 #define RETRY 3 //number of retry in write to file (0: mean no retry)
 #define RETRY_DELAY 5 // nb of millisecond between write try
 
-// organisation of datas : 2 fields, TAB between, 0 final: 22 chr
+void convert_datas_to_store(char *buf);
 
-void convert_datas_to_store(char *buf)
-{
-  int pos;
-  dtostrf(data.e_consumed.val, 10, 3, buf);
 
-  pos = strlen(buf);
-  *(buf + pos) ='\t';
-  dtostrf(data.e_producted.val, 10, 3, buf+10);
-  
-  pos = strlen(buf);
-  *(buf + pos) ='\0';
-}
-
+// organisation of datas
 /*  store_datas(char *fname, DateTime dt)
     --------------------------------------------------
     Store the actual datass in a file on SD card
@@ -41,29 +31,20 @@ void convert_datas_to_store(char *buf)
     - errFile: false if OK; then true if an error occures
 */
 
-void store_datas(char *fname, DateTime dt)
+void store_datas(char *fname)
 {
   short i = 0;
-  char dateTimeStr[21];
   char datas_str[31];
-                                        //   "20/11/11	08:40:00
-  snprintf(dateTimeStr, sizeof(dateTimeStr), "%02d/%02d/%02d\t%02d:%02d:%02d\t",
-          dt.year()-2000,
-          dt.month(),
-          dt.day(),
-          dt.hour(),
-          dt.minute(),
-          dt.second()
-          );
+          
   // open the file.
   // The FileSystem card is mounted at the following "/mnt/SD" and
   // create the name with year and month on 4 digits
-  //  012345678901234567
-  // "20/11/11	08:40:00
-  fname[OFFSET_YYMM + 0] = dateTimeStr[0];
-  fname[OFFSET_YYMM + 1] = dateTimeStr[1];
-  fname[OFFSET_YYMM + 2] = dateTimeStr[3];
-  fname[OFFSET_YYMM + 3] = dateTimeStr[4];
+  //  01234567890123456789
+  // "2020-08-29 22:10:42"
+  fname[OFFSET_YYMM + 0] = dateTimeStr[2];
+  fname[OFFSET_YYMM + 1] = dateTimeStr[3];
+  fname[OFFSET_YYMM + 2] = dateTimeStr[5];
+  fname[OFFSET_YYMM + 3] = dateTimeStr[6];
 
   fname[OFFSET_YYMM + 4] = 'e';
   fname[OFFSET_YYMM + 5] = 'n';
@@ -135,5 +116,20 @@ void log_msg_SD(const char * msg)
       delay(RETRY_DELAY);
     }
   } while(i++ < RETRY && err_file == true);
-
+ 
 } // log_msg_SD()
+
+
+
+void convert_datas_to_store(char *buf)
+{
+  int pos;
+  dtostrf(data.e_consumed.val, 10, 3, buf);
+
+  pos = strlen(buf);
+  *(buf + pos) = '\t'; *(buf + pos + 1) = '\0';
+  dtostrf(data.e_producted.val, 10, 3, buf + pos + 1);
+  
+  pos = strlen(buf);
+  *(buf + pos) = '\0';
+}
