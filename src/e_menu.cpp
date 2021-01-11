@@ -82,18 +82,16 @@ void display_at_ln(const char * info, u8 ln)
    byte ser_copy_bit = 1 << ln;  //get the copy bit flag for Serial
 
   lcd->set_cursor(0, ln); // column, line
+  if (pstate)	  p_e230->cycle();
   lcd->print(buf);
 
   if (ser_copy_bit && ser_copy)  //Q: is info to be copied onto serial?
   {
     Serial.println(); Serial.print(info);    //A: yes, print it
     ser_copy &= ~ser_copy_bit;    // remove flag
+    if (pstate)	  p_e230->cycle();
   }
-}
-
-void display_full_ln(const char * info, u8 ln)
-{
-  display_at_ln(info, ln);
+  GET_MIN_STACK();
 }
 
 /*  display_clock(void)
@@ -105,8 +103,8 @@ void display_full_ln(const char * info, u8 ln)
 */
 void display_clock()
 {
-  tm_to_ascii(&myTime, dateTimeStr);
-  display_at_ln(dateTimeStr, 0); 
+  //tm_to_ascii(&myTime, dateTimeStr);
+  display_at_ln(dateTimeStr, 0);
 }
 
 /*  LCD display info (standard: line 1)
@@ -142,11 +140,11 @@ void msg_manager()
   
   if (err_act)
   {
-    display_at_ln("err_msg");
+    display_at_ln(last_log);
   }
   else
-  {            //   01234567890123456789
-    display_full_ln("Marche normale");
+  {            
+    display_at_ln("Marche normale");
   }
 }
 
@@ -171,17 +169,16 @@ void display_energy()
   display_at_ln(buf, 3);
 }
 
-//menu 1 - short data
+// menu 1 - short data
 void display_datas()
 {
   char buf[21];
                 // 01234567890123456789
-  display_full_ln("P in P out  U-- I---", 2);
+  display_at_ln("P in / out  U-- I---", 2);
   
-  dtostrf(data.e_consumed_d, 5,2, buf);
+  dtostrf(data.p_consumed_d, 5,2, buf);
   *(buf+5) = ' ';
-  dtostrf(data.e_producted_d, 5,2, buf+6);
-  //*(buf+10) = ' ';   
+  dtostrf(data.p_producted_d, 5,2, buf+6);
   *(buf+11) = ' ';
   dtostrf(data.u, 3, 0, buf+12);
   *(buf+15) = ' ';
@@ -191,20 +188,19 @@ void display_datas()
 
 }
 
-//menu 2 - value of 3 ph
+// menu 2 - values of 3 ph
 void display_ph_datas()
 {
   char buf[21];
-  S_V *pval; // point on the array of values
 
-  //                     01234567890123456789
-  const char pattern[] ="230V 00.01A  00.00kW";
+  //                      01234567890123456789
+  const char pattern[] = "230V 00.00A  00.00kW";
   strcpy(buf, pattern);
-
-  // pval = data.values[2];  // 0 - e_cons; 1 - e_prod
  
   for (int i = 0; i < 3; i++)   // for 3 phases
   {
+    S_V *pval; // point on the array of values
+
     pval = data.values[i+2];
     dtostrf((pval)->val, 3, 0, buf);  // set voltage val
     *(buf+3) = 'V';
@@ -221,22 +217,8 @@ void display_ph_datas()
   } 
 }
 
-// menu 3 - last record
-void display_last_rec()
-{
-  char date_time_str[21];
-
-  tempo_msg = 1;
-  lcd->clear_display();
-  display_clock();
-
-  display_full_ln("Dernier enregistr.", 1);
-  tm_to_ascii(&data_time, date_time_str);
-  lcd->print(date_time_str);   
-  //display_at_ln(datas_values, 3);
-}
-
-// menu 4 - last log
+// menu 3 - last log
+#if 0
 void display_last_log(char * log)
 {
   tempo_msg = 1;
@@ -248,8 +230,9 @@ void display_last_log(char * log)
   display_at_ln("N.A.", 3);
   err_act = false;
 }
+#endif
 
-/* menu 5 - boot, soft version
+/* menu 4 - boot, soft version
   Convert and shows the date/time of boot
 */
 void display_last_boot_vers()
@@ -259,11 +242,7 @@ void display_last_boot_vers()
 
   lcd->clear_display();
   display_clock();
-  //display_at_ln(("Dernier boot:"), 1);
-  //tm_to_ascii(&bootTime, bootDateTimeStr);
-  //display_at_ln(bootDateTimeStr, 2);
-  display_at_ln(("Version:" VERSION), 3);  
-  //lcd->print(VERSION);
+  display_at_ln(("Version:" VERSION), 1);  
 }
 
 /*  display_menu()
@@ -280,7 +259,7 @@ void display_last_boot_vers()
  */
 void display_menu()
 {
-  char ln_menu[LN_LCD_LENGHT+1]; // used to prepare a line written to the LCD
+  // char ln_menu[LN_LCD_LENGHT+1]; // used to prepare a line written to the LCD
 
   lcd->set_cursor(0, 2); // we use lines 3 and 4
       
@@ -288,8 +267,7 @@ void display_menu()
   {
     menu_changed = false;
     err_act = false;  // manually clear the log error flag
-    snprintf(ln_menu, sizeof(ln_menu), "\n*menu:%d *", menu);
-    Serial.println(ln_menu);
+    Serial.print(F("\n*menu: ")); Serial.println((int)menu);
   }
   
   switch(menu)
@@ -316,13 +294,8 @@ void display_menu()
 
     /* -------------- MENU 4 ------------- */
     case 4: // last log
-    // display_last_log(last_log);
-    break;  // menu 4
-
-    /* -------------- MENU 5 ------------- */
-    case 5: // boot and version
     display_last_boot_vers();
-    break;
+    break;  // menu 4
 
     default:  // nothing to do
     break;

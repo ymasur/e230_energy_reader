@@ -69,8 +69,8 @@ public:
 class Data
 {
 public:
-	double e_consumed_0, e_producted_0;
-	float e_consumed_d, e_producted_d;
+	float e_consumed_0, e_producted_0;
+	float p_consumed_d, p_producted_d;	// computed each 1/4 hour
 
 	S_V e_consumed, e_producted;		// energy
 	S_V u_ph1, u_ph2, u_ph3; 
@@ -130,10 +130,10 @@ public:
 	*/
 	void energy_diff()
 	{
-		e_consumed_d = 4.0 * (e_consumed.val - e_consumed_0);
+		p_consumed_d = 4.0 * (e_consumed.val - e_consumed_0);
 		e_consumed_0 = e_consumed.val;
 
-		e_producted_d = 4.0 * (e_producted.val - e_producted_0);
+		p_producted_d = 4.0 * (e_producted.val - e_producted_0);
 		e_producted_0 = e_producted.val;
 	}
 
