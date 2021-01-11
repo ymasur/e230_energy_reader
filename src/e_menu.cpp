@@ -68,6 +68,10 @@ void menu_select()
     the refresh onto it.
     Command to the serial set a bit to specify wich line cotent is to be copied.
     After the copy, the bit is reset.
+
+    Because of frequent call and timing to receive e230 datas, this function made the 
+    cycle() call between operations.
+
     Parameters:
     - info: strig to be displayed
     - ln: line number of the LCD (0..3)
@@ -82,15 +86,17 @@ void display_at_ln(const char * info, u8 ln)
    byte ser_copy_bit = 1 << ln;  //get the copy bit flag for Serial
 
   lcd->set_cursor(0, ln); // column, line
-  if (pstate)	  p_e230->cycle();
+  CYCLE();
   lcd->print(buf);
+  CYCLE();
 
   if (ser_copy_bit && ser_copy)  //Q: is info to be copied onto serial?
   {
     Serial.println(); Serial.print(info);    //A: yes, print it
     ser_copy &= ~ser_copy_bit;    // remove flag
-    if (pstate)	  p_e230->cycle();
+    CYCLE();
   }
+
   GET_MIN_STACK();
 }
 
@@ -103,7 +109,6 @@ void display_at_ln(const char * info, u8 ln)
 */
 void display_clock()
 {
-  //tm_to_ascii(&myTime, dateTimeStr);
   display_at_ln(dateTimeStr, 0);
 }
 
@@ -118,7 +123,7 @@ void display_clock()
 void display_info(const char * info, u8 tempo)
 {
   tempo_msg = tempo;
-  display_at_ln(info, 1);
+  display_at_ln(info, 1); 
 }
 
 /* msg_manage()
@@ -162,7 +167,7 @@ void display_energy()
   dtostrf(data.e_consumed.val, 10, 3, buf+10);
   display_at_ln(buf, 2);
 
-  yield();
+  if (pstate)	  p_e230->cycle();
 
   strcpy(buf, "Prod  kWh ");
   dtostrf(data.e_producted.val, 10, 3, buf+10);
@@ -174,14 +179,11 @@ void display_datas()
 {
   char buf[21];
                 // 01234567890123456789
-  display_at_ln("P in / out  U-- I---", 2);
+  display_at_ln("P in / out  U-- I---", 2); if (pstate)	  p_e230->cycle();
   
-  dtostrf(data.p_consumed_d, 5,2, buf);
-  *(buf+5) = ' ';
-  dtostrf(data.p_producted_d, 5,2, buf+6);
-  *(buf+11) = ' ';
-  dtostrf(data.u, 3, 0, buf+12);
-  *(buf+15) = ' ';
+  dtostrf(data.p_consumed, 5,2, buf);     buf[5] = ' '; // replace the '\0'
+  dtostrf(data.p_producted, 5,2, buf+6);  buf[11] = ' ';
+  dtostrf(data.u, 3, 0, buf+12);          buf[15] = ' ';
   dtostrf(data.i, 4, 2, buf+16);
 
   display_at_ln(buf, 3);
@@ -201,15 +203,15 @@ void display_ph_datas()
   {
     S_V *pval; // point on the array of values
 
-    pval = data.values[i+2];
+    pval = data.values[i];
     dtostrf((pval)->val, 3, 0, buf);  // set voltage val
-    *(buf+3) = 'V';
+    *(buf+3) = 'V'; // replace the '\0'
 
-    pval = data.values[i+2+3];      
+    pval = data.values[i+3];      
     dtostrf((pval)->val, 5, 2, buf+5);
     *(buf+10) = 'A';
 
-    pval = data.values[i+2+6]; 
+    pval = data.values[i+6]; 
     dtostrf((pval)->val, 5, 2, buf+13);
     *(buf+18) = 'k';
 
@@ -217,20 +219,23 @@ void display_ph_datas()
   } 
 }
 
-// menu 3 - last log
-#if 0
-void display_last_log(char * log)
+/* menu 3 - erreurs
+*/
+void display_err()
 {
-  tempo_msg = 1;
-  
-  lcd->clear_display();
-  display_clock();
-  //display_full_ln("Dernier log:", 1);
-  //display_at_ln(last_log, 3);  
-  display_at_ln("N.A.", 3);
-  err_act = false;
+  char buf[21];
+
+            //  012345678901234567890
+  sprintf(buf, "file: "); buf[5] = err_file ? '1':'0'; 
+  display_at_ln(buf, 1);
+
+  sprintf(buf, "Timeout: "); buf[8] = err_timeout ? '1':'0';
+  display_at_ln(buf, 2);
+
+  sprintf(buf, "CRC: "); buf[4] = err_act ? '1':'0';
+  display_at_ln(buf, 3);
+
 }
-#endif
 
 /* menu 4 - boot, soft version
   Convert and shows the date/time of boot
@@ -238,11 +243,8 @@ void display_last_log(char * log)
 void display_last_boot_vers()
 {
   tempo_msg = 1;
-  //char bootDateTimeStr[21];
-
-  lcd->clear_display();
-  display_clock();
   display_at_ln(("Version:" VERSION), 1);  
+  display_at_ln(last_log, 2);
 }
 
 /*  display_menu()
@@ -292,8 +294,15 @@ void display_menu()
     display_ph_datas();   
     break; // menu 2
 
+    /* -------------- MENU 3 ------------- */
+    case 3: // show error status
+    display_clock();
+    display_err();
+    break;
+
     /* -------------- MENU 4 ------------- */
     case 4: // last log
+    display_clock();  
     display_last_boot_vers();
     break;  // menu 4
 

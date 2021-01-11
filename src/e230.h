@@ -1,13 +1,6 @@
 /*  e230.h
 	  ------
-	Definitions part
-
-	YM: 24.12.2020 - adapted from e230_5.ino, from JM Paratte
-  29.12.2020 - e230 dynamic alloc RAM:   [=======   ]  65.9% (used 1686 bytes from 2560 bytes)
-                                  Flash: [========= ]  90.0% (used 25796 bytes from 28672 bytes)
-  30.12.2020 - print(), store(), menu 0, 1, 2, 5 OK
-    RAM:   [=======   ]  65.1% (used 1667 bytes from 2560 bytes)
-    Flash: [========= ]  93.4% (used 26766 bytes from 28672 bytes)    
+	  Definitions part
 */
 
 #ifndef E230_H
@@ -20,8 +13,8 @@
   #define CLASS extern
 #endif
 
-#define __PROG__ "e230_05 VS-CODE Yun"
-#define VERSION "05.016" // program version
+#define __PROG__ "e-reader Yun"
+#define VERSION "05.020" // program version
 /*
   with dynamic alloc of E230_S
 */
@@ -29,21 +22,14 @@
 #ifndef _WIN32
 #include <Arduino.h>
 #include <SoftwareSerial.h>
-/*
-  #include <Bridge.h>
-  #include <BridgeServer.h>
-  #include <BridgeClient.h>
-*/
 #include <FileIO.h>
 #include <avr/wdt.h>
 #include <string.h>
 #include <Wire.h>
-#include <time.h>
-#include <RTClib.h>
-// #include <jm_Scheduler.h>
 #include <jm_LCM2004A_I2C.h>
 
 #else // _WIN32
+
 #warning "only for test purpose"
 #include <stdio.h>
 #include <string>
@@ -71,7 +57,6 @@
 
 #ifndef _WIN32
 #include <SoftwareSerial.h>
-
 #include <AltSoftSerial.h>
 CLASS AltSoftSerial SwSerial;
 // #warning Alternate serial ON
@@ -117,11 +102,8 @@ CLASS Print_out * stream_out
 #endif  // WIN32 print out
 
 #endif // ! _WIN32
-#define E230_BUF_SZ (514)   // size of input buffer
-#include "e230_05.hpp"
-#include "e_calc.hpp"
-#include "e_menu.h"
 
+#define E230_BUF_SZ (512)   // size of input buffer
   
 #define ON 1
 #define OFF 0
@@ -129,14 +111,19 @@ CLASS Print_out * stream_out
 #define LED_R A3
 #define LED_ON(x) digitalWrite(x, 1)
 #define LED_OFF(x) digitalWrite(x, 0)
+#define LED_REV(x) digitalWrite(x, !digitalRead(x))
 #define LED13 13  // on board LED
+
 // SW on Didel LearnCbot
 #define SW1 A0   // SW1 « P1 » port Analog 0 / actif LOW
 #define SW2 A1   // SW2 « P2 » port Analog 1 / actif LOW
 #define SW_NB 2   // only 2 switches to scan
 
+#include "e230_05.hpp"
+#include "e_calc.hpp"
+#include "e_menu.h"
 
-// time given by RTC, or Unix cmd              1         2
+// time given by Unix cmd              1         2
 //                           012345678901234567890
 // asci format, as          "2019-08-29 22:10:42"
 #define DT_LENGHT 20
@@ -145,11 +132,6 @@ CLASS char dateTimeStr[DT_LENGHT+1];
 
 // LCD
 CLASS jm_LCM2004A_I2C * lcd;
-
-// RTC
-CLASS RTC_DS3231 rtc;
-CLASS DateTime myTime; // used to maintain time operations
-CLASS DateTime bootTime; // simple copy to know it
 
 // freemem
 #define LOW_SRAM_ALERT 200  // Normal use : 910..965 left
@@ -163,7 +145,7 @@ CLASS char fname[NAME_LENGHT+1]
 #ifdef MAIN
 //                          1         2         3
 //                012345678901234567890123456789012
-               = "/mnt/sd/arduino/www/YYMMengy.txt";
+               = "/mnt/sd/arduino/www/YYMM-enr.txt";
                
 //conservative filename 8.3 format
 //the four chars 'YYMM' are replaced by year and month, as 2012
@@ -187,20 +169,26 @@ CLASS bool menu_changed;
 
 // time, error, storage vars
 CLASS bool err_file;
-CLASS byte ser_copy;
-CLASS byte tempo_msg;
-#define TEMPO_MSG_VAL 15
 CLASS bool err_act;
-// CLASS char err_msg[21];
-CLASS DateTime data_time;
-//CLASS char datas_values[21];
+CLASS bool err_timeout;
+CLASS bool err_fatal;
+CLASS byte ser_copy;
 
+CLASS byte tempo_msg;
 
-//CLASS E230_S *p_e230;
+#define TEMPO_MSG_VAL 15
 
+#ifndef proc
+  enum proc { wait, ask, rec, getv, calc };
+#endif
+CLASS u8 pstate;  // aqu process states
+
+CLASS int min_stack;
+#define GET_MIN_STACK() {if (min_stack > freeMemory()) min_stack = freeMemory();}
+
+#define CYCLE() { if (pstate)	  p_e230->cycle(); }
 
 // -----------------------------------------------------------------------------
-
 
 // Function prototype (VS-CODE)
 
@@ -230,30 +218,23 @@ void display_last_rec(char * rec);
 void display_log(const char * log);
 void display_vers(const char * vers);
 void display_at_ln(const char * info, u8 ln=1); 
-void display_full_ln(const char * info, u8 ln=1);
+#define display_full(MSG, LINE) display_at_ln(MSG, LINE)
+// void display_full_ln(const char * info, u8 ln=1);
 
-//CLASS char last_rec[21]; 
 CLASS char last_log[21];
-//CLASS char last_msg[21];
 
-//void log_err(String msg); // with flag err_act set, onto SD, display and serial
-//void log_msg(String msg); // onto SD, display and serial
-//void log_info(String msg); // onto display for short time and serial
 void log_err(const char * msg); // with flag err_act set, onto SD, display and serial
 void log_msg(const char * msg); // onto SD, display and serial
 void log_info(const char * msg); // onto display for short time and serial
+void store_datas(char *fname);
 
-void store_datas(char *fname, DateTime dt);
+const char flog[] = "/mnt/sd/arduino/www/e230.log";
 void log_msg_SD(const char * msg);
 
-// e_time prototype
-void timeSyncInit();
-void timeSyncStart();
-void timeSync();
-void tm_to_ascii(DateTime *dt, char *dateTimeStr);
+int getTimeStamp(char *, short len);
 bool IsSyncTime_10_seconds();
+bool IsSyncTime_x_seconds(uint8_t s=10);
 bool IsSyncTime_10_minutes();
-bool IsSyncTime_03h00();
 
 // utility
 int freeMemory();

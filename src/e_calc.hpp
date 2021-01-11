@@ -1,6 +1,7 @@
 /* 	e_calc.hpp
 	----------
 	YM: 20.12.2020 - compute some values
+	YM: 11.01.2021 - class S_VD, energy in double, instead float
 */
 #ifndef E_CALC_HPP
 #define E_CALC_HPP
@@ -63,16 +64,26 @@ public:
 	float val;				// numeric value
 
 	char* get_sval();		// use direct _buf, and cut at first no-numeric chr
-};	// sruct s_v
+};	// sruct S_V
+
+class S_VD : public S_V	// same, for double value
+{
+public:
+	//const char* signature;	// signature to get data, as "1.8.2"
+	//char* sval;				// ASCII value associated, as "230"
+	double val;				// numeric double value
+
+	//char* get_sval();		// use direct _buf, and cut at first no-numeric chr
+};	// sruct S_VD
 
 // Class to handle all useful datas delivered by electronic counter
 class Data
 {
 public:
-	float e_consumed_0, e_producted_0;
-	float p_consumed_d, p_producted_d;	// computed each 1/4 hour
+	double e_consumed_0, e_producted_0;
+	float p_consumed, p_producted;		// calculated for 15 minutes
 
-	S_V e_consumed, e_producted;		// energy
+	S_VD e_consumed, e_producted;		// energy
 	S_V u_ph1, u_ph2, u_ph3; 
 	float u;	// 3 phases voltage
 	S_V i_ph1, i_ph2, i_ph3;
@@ -84,11 +95,16 @@ public:
 
 	int state;
 
-#define NB_S_V (14)	// 2 energy, 3 u, 3 i, 3 p, 3 pf = 14 elements
+#define NB_S_VD (2)	// 2 energy
+	S_VD * e_values[NB_S_VD] =
+	{
+		&e_consumed, &e_producted,
+	};
+
+#define NB_S_V (12)	// 3 u, 3 i, 3 p, 3 pf = 14 elements
 
 	S_V * values[NB_S_V] =
 	{
-		&e_consumed, &e_producted,
 		&u_ph1, &u_ph2, &u_ph3,
 		&i_ph1, &i_ph2, &i_ph3,
 		&p_ph1, &p_ph2, &p_ph3,
@@ -125,15 +141,15 @@ public:
 
 	/* 	energy_diff()
 		------------
-		Called each 15 minutes, compute energy difference durin 1/4 hour
+		Called each 15 minutes, compute energy difference during 1/4 hour
 		This difference is multiplied by 4, to have the power average
 	*/
 	void energy_diff()
 	{
-		p_consumed_d = 4.0 * (e_consumed.val - e_consumed_0);
+		p_consumed = 4.0 * ((double)e_consumed.val - e_consumed_0);
 		e_consumed_0 = e_consumed.val;
 
-		p_producted_d = 4.0 * (e_producted.val - e_producted_0);
+		p_producted = 4.0 * ((double)e_producted.val - e_producted_0);
 		e_producted_0 = e_producted.val;
 	}
 
@@ -173,26 +189,23 @@ public:
 	// scan buffer and sets the ASCII pointers
 	int populate(char* p_buf)
 	{
-		char* pscan = p_buf;	// point at start of buffer
-		int i;					// index of element to find
+		char* pscan;	// pointer to scan the buffer
 		int miss = 0;			// counter of segment without find success
 
 		set_signatures();		// each element does have its signature
 		state = ST_RUN;
 
 		// scan the entire buffer, to find signature
-
-		for (i = 0; (i < NB_S_V) && (pscan < p_buf+E230_BUF_SZ) && (miss < 4);)
+		// scan first, for element 'energy' stored in double
+		pscan = p_buf;
+		for (int i = 0; (i < NB_S_VD) && (pscan < p_buf+E230_BUF_SZ) && (miss < 4);)
 		{
-			S_V * v = values[i];	// point struct value to found
+			S_VD * v = e_values[i];	// point struct value to found
 			v->sval = NULL;	// clear value of string value pointer
 			v->val = 0.0;	// clear numeric value
 
-			// printf("pscan: %s - signature: %10s\n", pscan, v->signature);
-			// Serial.print("signature:"); Serial.println(v->signature);
 			if (strncmp(pscan, v->signature, strlen(v->signature)) == 0)	// q: element found by signature?
 			{
-				// printf("*** signature trouvee: %s *** - ", v->signature);
 				pscan = pscan + strlen(v->signature) + 1;	// go ahead the '('
 				v->sval = pscan;					// set sval to the next field
 				pscan = pscan + strlen(pscan) + 1;	// go ahead the \0
@@ -204,73 +217,47 @@ public:
 			{
 				pscan = pscan + strlen(pscan) + 1;	// skip the field
 				if (*pscan == '\0') miss++;
-				// printf("miss: %d - p ascii: %s\n", miss,  pscan);
-				//Serial.print("miss: "); Serial.println(pscan);
+
 			}
 
 		} // for buffer scan 
 
+
+		// scan for next elements stored in float, follow in the buffer
+		for (int i = 0; (i < NB_S_V) && (pscan < p_buf+E230_BUF_SZ) && (miss < 4);)
+		{
+			S_V * v = values[i];	// point struct value to found
+			v->sval = NULL;	// clear value of string value pointer
+			v->val = 0.0;	// clear numeric value
+
+			if (strncmp(pscan, v->signature, strlen(v->signature)) == 0)	// q: element found by signature?
+			{
+				pscan = pscan + strlen(v->signature) + 1;	// go ahead the '('
+				v->sval = pscan;					// set sval to the next field
+				pscan = pscan + strlen(pscan) + 1;	// go ahead the \0
+
+				i++;		// next element to find
+				miss = 0;	// reset miss counter
+			}
+			else
+			{
+				pscan = pscan + strlen(pscan) + 1;	// skip the field
+				if (*pscan == '\0') miss++;
+			}
+
+		} // for rest of buffer scan 
+
 		// check if all wanted signatures are found: state set
 		if (i == NB_S_V) state = ST_DONE; else state = ST_ERR;
-		// printf("Elements found: %d of %d\n", i, NB_S_V);
-		// Serial.print("Elements found:"); Serial.println(i);
+		// Serial.print("\nElements found:"); Serial.println(i);
 
 		return state;
 	}// populate()
 
-#if 0
-	void print()
-	{
-		stream_out->println("[start]");
-		
-		if (state == ST_ERR)
-		{
-			stream_out->print("Error\n");
-		}
-		else if (state == ST_RUN)
-		{
-			stream_out->print("Run\n");
-		}
-		else
-		{
-			char buf[20];	// local buffer for float to ASCII
-
-			stream_out->print("E consommee: ");
-			stream_out->println(e_consumed.get_sval());
-			stream_out->print("E produite:  ");
-			stream_out->println(e_producted.get_sval());
-
-			stream_out->print("U ph1: "); stream_out->println(u_ph1.get_sval());
-			stream_out->print("U ph2: "); stream_out->println(u_ph2.get_sval());
-			stream_out->print("U ph3: "); stream_out->println(u_ph3.get_sval());
-
-			stream_out->print("I ph1: "); stream_out->println(i_ph1.get_sval());
-			stream_out->print("I ph2: "); stream_out->println(i_ph2.get_sval());
-			stream_out->print("I ph3: "); stream_out->println(i_ph3.get_sval());
-
-			stream_out->print("P ph1: "); stream_out->println(p_ph1.get_sval());
-			stream_out->print("P ph2: "); stream_out->println(p_ph2.get_sval());
-			stream_out->print("P ph3: "); stream_out->println(p_ph3.get_sval());
-
-			stream_out->print("sens 1: "); stream_out->println(f_ph1.get_sval());
-			stream_out->print("sens 2: "); stream_out->println(f_ph2.get_sval());
-			stream_out->print("sens 3: "); stream_out->println(f_ph3.get_sval());
-
-			dtostrf(u, 3, 0, buf);
-			stream_out->print("U : "); stream_out->println(buf);
-
-			dtostrf(i, 1, 2, buf);
-			stream_out->print("I : "); stream_out->println(buf);
-
-			dtostrf(p, 2, 2, buf);
-			stream_out->print("P : "); stream_out->println(buf);
-
-			stream_out->println("[end]");
-		}
-
-	} // print()
-#endif	
-
+/*	void print()
+	------------
+	Delayed function, to outputonto serial the last values with the command 'p'.
+*/
 	void print()
 	{		
 #if 1		
@@ -318,6 +305,8 @@ public:
 			dtostrf(p, 5, 2, buf);
 			stream_out->print(F("P : ")); stream_out->println(buf);
 		}
+#else
+		stream_out->print(F("N.A.\n"));
 #endif
 	} // print()
 

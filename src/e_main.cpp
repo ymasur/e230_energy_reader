@@ -2,6 +2,7 @@
 	----------
 	YM: 31.12.2020
   01.01.2021: add min stack
+
 */
 #ifndef MAIN
 #define MAIN
@@ -14,18 +15,6 @@
 
 bool time_to_store, store_done; // storage process control
 bool print_val; // cmd 'p' active print command
-
-// log the error message 
-#if 0
-void log_err(const char * msg)
-{
-  err_act = true; // make the error flag active (removed by menu)
-  //strncpy(last_log, msg, sizeof(last_log) );
-  // log_info(msg);
-  // display_at_ln(msg);
-  //log_msg_SD(msg);
-}
-#endif
 
 // display an info for a short time, and not memorized
 void log_info(const char * msg)
@@ -51,8 +40,8 @@ void setup()
 	sw[0] = new Sw(SW1);
 	sw[1] = new Sw(SW2);
 
-  min_stack = 9999;
-	menu = 0; // clear menu setting
+  min_stack = 9999;   //set higher enough
+	menu = 0;           // clear menu setting
   ser_copy = 0;
 
   // I2C
@@ -210,9 +199,7 @@ void serial_cmd()
 
     case '?':
     default:
-      //ser_copy = 0;
-      //cmd = 0;
-      Serial.println(F("\ncmd: d(ate, m(em,  menu 1, 2, 3, 4, 5."));
+      Serial.println(F("\ncmd: d(ate, p(rint, m(em, s(tack, menu 1..4."));
     break;
   }
 } // serial_cmd()
@@ -243,7 +230,7 @@ void poll_loop_X_ms()
 }
 
 
-static unsigned char rec_count;
+static unsigned char rec_count; // record time, for manage timeout
 
 void poll_loop_1_s()
 {
@@ -388,7 +375,7 @@ void loop()
     poll_loop_1_s();
   }  
 
-  if (pstate)	  p_e230->cycle();
+  CYCLE();
   
 }// loop()
 
